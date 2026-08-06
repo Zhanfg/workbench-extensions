@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "generatedAt": "2026-08-06T11:42:00Z",
+  "channel": "stable-preview",
+  "packs": [
+    {
+      "id": "org.workbench.novel",
+      "version": "0.2.0",
+      "displayName": "小说工具",
+      "summary": "一个插件内含章节结构、术语一致性、翻译提示词、译文质量检查和出版导出，五项功能可独立开关。",
+      "minimumHostVersion": "0.2.0-preview.3",
+      "runtime": "bundled-module",
+      "fileName": "org.workbench.novel-0.2.0.wpack",
+      "size": 36728,
+      "sha256": "2d5204a3a940aa6df4ea0e1bff8b3a86026d49cbebc034d95da8b89afc878280",
+      "url": "https://raw.githubusercontent.com/Zhanfg/workbench-extensions/main/packages/org.workbench.novel/0.2.0/org.workbench.novel-0.2.0.wpack",
+      "capabilities": [
+        "novel.chapter.detect@1",
+        "novel.glossary.apply@1",
+        "novel.prompt.compose@1",
+        "novel.quality.validate@1",
+        "novel.export.compose@1"
+      ],
+      "features": [
+        {
+          "id": "chapter-structure",
+          "title": "章节结构",
+          "capability": "novel.chapter.detect@1",
+          "summary": "识别 Markdown、中英文小说章节标题并返回稳定文本范围。",
+          "defaultEnabled": true
+        },
+        {
+          "id": "glossary",
+          "title": "术语一致性",
+          "capability": "novel.glossary.apply@1",
+          "summary": "应用术语表、检查冲突并审计译文覆盖。",
+          "defaultEnabled": true
+        },
+        {
+          "id": "translation-prompt",
+          "title": "翻译提示词",
+          "capability": "novel.prompt.compose@1",
+          "summary": "组合出版级翻译预设、术语和格式约束。",
+          "defaultEnabled": true
+        },
+        {
+          "id": "quality-assurance",
+          "title": "译文质量检查",
+          "capability": "novel.quality.validate@1",
+          "summary": "检查段落、标点、禁用词和结构问题。",
+          "defaultEnabled": true
+        },
+        {
+          "id": "publication-export",
+          "title": "出版导出",
+          "capability": "novel.export.compose@1",
+          "summary": "生成 TXT、Markdown 或独立 HTML 译稿。",
+          "defaultEnabled": true
+        }
+      ]
+    }
+  ]
+}
