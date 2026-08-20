@@ -1,0 +1,1 @@
+trigger=HideRecent-2.1.2-hardened-20260820
