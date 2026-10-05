@@ -1,0 +1,67 @@
+name: MT269 refactor regression
+
+on:
+  push:
+    branches:
+      - mt269-refactor-v2
+    paths:
+      - 'mt269-refactor/**'
+      - '.github/workflows/mt269-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Compile refactor core
+        run: |
+          set -euxo pipefail
+          mkdir -p mt269-refactor/out/classes
+          javac -encoding UTF-8             -d mt269-refactor/out/classes             mt269-refactor/src/*.java             mt269-refactor/tests/RegressionSuite.java
+
+      - name: Run regression suite
+        run: |
+          set -euxo pipefail
+          java -cp mt269-refactor/out/classes mt269.refactor.RegressionSuite
+
+      - name: Lint patch plan
+        run: |
+          set -euxo pipefail
+          python3 mt269-refactor/ci/patch_plan_lint.py
+
+      - name: Fetch Android patch toolchain
+        run: |
+          set -euxo pipefail
+          mkdir -p mt269-refactor/out/toolchain
+          cd mt269-refactor/out/toolchain
+          curl -fL --retry 3 -o apksig.jar             https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.13.2/apksig-8.13.2.jar
+          curl -fL --retry 3 -o r8.jar             https://dl.google.com/dl/android/maven2/com/android/tools/r8/8.13.25/r8-8.13.25.jar
+          curl -fL --retry 3 -o baksmali.jar             https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat-release.jar
+          curl -fL --retry 3 -o smali.jar             https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat-release.jar
+          test "$(sha256sum apksig.jar | awk '{print $1}')" =             "c070ed1394629d74641aa0906f60b2ffa1ee77e6366a1f93437f59717b1aeb89"
+          java -jar baksmali.jar --help >/dev/null
+          java -jar smali.jar --help >/dev/null
+
+      - name: Package reusable toolchain
+        run: |
+          set -euxo pipefail
+          cd mt269-refactor/out
+          zip -9 -r mt269-toolchain.zip toolchain classes
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt269-toolchain
+          path: mt269-refactor/out/mt269-toolchain.zip
+          if-no-files-found: error
+          retention-days: 7
