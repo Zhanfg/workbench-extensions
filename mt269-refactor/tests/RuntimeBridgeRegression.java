@@ -7,22 +7,30 @@ import mtx.v2.RootBridge;
 
 public final class RuntimeBridgeRegression {
     public static void main(String[] args) throws Exception {
-        latestRequestWins();
+        paneIsolationAndLatestRequestWins();
         socketPollTimeoutIsNotFatal();
         System.out.println("MT269 runtime bridge regression: PASS");
     }
 
-    private static void latestRequestWins() {
-        Object pane = new Object();
-        Object first = new Object();
-        Object second = new Object();
+    private static void paneIsolationAndLatestRequestWins() {
+        Object controller = new Object();
+        Object left = new Object();
+        Object right = new Object();
+        Object leftFirst = new Object();
+        Object leftSecond = new Object();
+        Object rightFirst = new Object();
 
-        PanelBridge.register(pane, first);
-        check(PanelBridge.isCurrent(pane, first), "first request not registered");
+        PanelBridge.register(controller, left, leftFirst);
+        PanelBridge.register(controller, right, rightFirst);
 
-        PanelBridge.register(pane, second);
-        check(!PanelBridge.isCurrent(pane, first), "stale request still current");
-        check(PanelBridge.isCurrent(pane, second), "latest request rejected");
+        check(PanelBridge.isCurrent(controller, leftFirst), "left request not registered");
+        check(PanelBridge.isCurrent(controller, rightFirst), "right request not registered");
+
+        PanelBridge.register(controller, left, leftSecond);
+
+        check(!PanelBridge.isCurrent(controller, leftFirst), "stale left request still current");
+        check(PanelBridge.isCurrent(controller, leftSecond), "latest left request rejected");
+        check(PanelBridge.isCurrent(controller, rightFirst), "left navigation invalidated right pane");
     }
 
     private static void socketPollTimeoutIsNotFatal() throws Exception {
