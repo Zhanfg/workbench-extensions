@@ -13,7 +13,9 @@ public final class RegressionSuite {
 
     public static void main(String[] args) {
         testPaneGenerations();
+        testRuntimePaneCommitGate();
         testRootHandshake();
+        testRootPolicy();
         testSorting();
         System.out.println("MT269 regression suite: PASS");
     }
@@ -23,24 +25,35 @@ public final class RegressionSuite {
         long l1 = gate.begin(PaneGenerationGate.Pane.LEFT);
         long r1 = gate.begin(PaneGenerationGate.Pane.RIGHT);
         long l2 = gate.begin(PaneGenerationGate.Pane.LEFT);
-
         check(!gate.mayCommit(PaneGenerationGate.Pane.LEFT, l1), "stale left load committed");
         check(gate.mayCommit(PaneGenerationGate.Pane.LEFT, l2), "latest left load rejected");
         check(gate.mayCommit(PaneGenerationGate.Pane.RIGHT, r1), "right pane invalidated by left pane");
     }
 
+    private static void testRuntimePaneCommitGate() {
+        Object left = new Object();
+        Object right = new Object();
+        Object leftOld = new Object();
+        Object rightOnly = new Object();
+        Object leftNew = new Object();
+        PaneCommitGate.register(leftOld, left);
+        PaneCommitGate.register(rightOnly, right);
+        PaneCommitGate.register(leftNew, left);
+        check(!PaneCommitGate.isCurrent(leftOld, left), "old left loader committed");
+        check(PaneCommitGate.isCurrent(leftNew, left), "new left loader rejected");
+        check(PaneCommitGate.isCurrent(rightOnly, right), "left navigation invalidated right pane");
+        check(!PaneCommitGate.isCurrent(leftNew, right), "loader crossed pane ownership");
+    }
+
     private static void testRootHandshake() {
         RootHandshakeStateMachine sm =
             new RootHandshakeStateMachine(RootHandshakeStateMachine.Policy.android17Default());
-
         sm.begin(1_000);
         sm.helperStarting();
         sm.helperStarted();
-
         check(sm.nextPollTimeoutMs(1_000) == 250, "poll quantum");
         check(sm.onPollTimeout(1_250), "early poll timeout became fatal");
         check(sm.state() == RootHandshakeStateMachine.State.WAITING_FOR_CONNECT, "wrong wait state");
-
         sm.connected();
         check(sm.state() == RootHandshakeStateMachine.State.CONNECTED, "connect failed");
 
@@ -56,6 +69,14 @@ public final class RegressionSuite {
         retry.helperStarted();
         check(!retry.onPollTimeout(4_001), "second deadline should end attempt");
         check(retry.state() == RootHandshakeStateMachine.State.FAILED, "second deadline should fail");
+    }
+
+    private static void testRootPolicy() {
+        check(RootBridgePolicy.pollTimeoutMs() == 250, "root poll policy");
+        check(RootBridgePolicy.maxPolls() == 40, "root poll count");
+        check((long) RootBridgePolicy.pollTimeoutMs() * RootBridgePolicy.maxPolls() == 10_000L, "root accept budget");
+        check(RootBridgePolicy.localJoinMs() < RootBridgePolicy.serverJoinMs(), "local fallback must be earlier than TCP deadline");
+        check(RootBridgePolicy.serverJoinMs() > 10_000L, "parent wait must cover accept budget");
     }
 
     private static void testSorting() {
