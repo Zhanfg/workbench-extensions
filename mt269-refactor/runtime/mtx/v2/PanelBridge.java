@@ -13,18 +13,37 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Compatibility layer for MT269's two-pane async file loader.
  *
- * Invariants:
- *  - latest request wins per pane/controller;
+ * Architectural invariants:
+ *  - request ownership is isolated by (controller,pane), never globally;
+ *  - latest request wins inside one pane only;
  *  - stale success/error callbacks are ignored;
  *  - transient failures never erase an already-rendered pane;
- *  - ZIP/APK ordering is stable and does not replace the user's MT sort mode.
+ *  - background tasks never mutate the list currently owned by the UI;
+ *  - ZIP/APK ordering is stable and never re-sorts peer rows by name.
  */
 public final class PanelBridge {
     private PanelBridge() {}
 
     private static final Object LOCK = new Object();
-    private static final WeakHashMap<Object, WeakReference<Object>> LATEST = new WeakHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Access> ACCESS = new ConcurrentHashMap<>();
+
+    private static final WeakHashMap<Object, WeakHashMap<Object, WeakReference<Object>>> LATEST =
+            new WeakHashMap<Object, WeakHashMap<Object, WeakReference<Object>>>();
+
+    private static final WeakHashMap<Object, Registration> REGISTRATIONS =
+            new WeakHashMap<Object, Registration>();
+
+    private static final ConcurrentHashMap<Class<?>, Access> ACCESS =
+            new ConcurrentHashMap<Class<?>, Access>();
+
+    private static final class Registration {
+        final WeakReference<Object> controller;
+        final WeakReference<Object> pane;
+
+        Registration(Object controller, Object pane) {
+            this.controller = new WeakReference<Object>(controller);
+            this.pane = new WeakReference<Object>(pane);
+        }
+    }
 
     private static final class ZipPanelHolder {
         static final Class<?> TYPE = findZipPanelType();
@@ -59,31 +78,46 @@ public final class PanelBridge {
         boolean directory(Object row) {
             try {
                 Object v = directory.invoke(row);
-                return v instanceof Boolean && (Boolean) v;
+                return v instanceof Boolean && ((Boolean) v).booleanValue();
             } catch (Throwable ignored) {
                 return false;
             }
         }
     }
 
-    public static void register(Object controller, Object task) {
-        if (controller == null || task == null) return;
+    public static void register(Object controller, Object pane, Object task) {
+        if (controller == null || pane == null || task == null) return;
         synchronized (LOCK) {
-            LATEST.put(controller, new WeakReference<>(task));
+            WeakHashMap<Object, WeakReference<Object>> perPane = LATEST.get(controller);
+            if (perPane == null) {
+                perPane = new WeakHashMap<Object, WeakReference<Object>>();
+                LATEST.put(controller, perPane);
+            }
+            perPane.put(pane, new WeakReference<Object>(task));
+            REGISTRATIONS.put(task, new Registration(controller, pane));
         }
     }
 
     public static boolean isCurrent(Object controller, Object task) {
         if (controller == null || task == null) return false;
         synchronized (LOCK) {
-            WeakReference<Object> ref = LATEST.get(controller);
+            Registration registration = REGISTRATIONS.get(task);
+            if (registration == null) return false;
+
+            Object registeredController = registration.controller.get();
+            Object pane = registration.pane.get();
+            if (registeredController != controller || pane == null) return false;
+
+            WeakHashMap<Object, WeakReference<Object>> perPane = LATEST.get(controller);
+            if (perPane == null) return false;
+
+            WeakReference<Object> ref = perPane.get(pane);
             return ref != null && ref.get() == task;
         }
     }
 
-    /** Preserve the last good frame on a current-load failure. */
     public static void ignoreDestructiveClear(Object controller, Object emptyList, boolean animate) {
-        // Intentionally no-op. The legacy callback still closes its loading/progress state.
+        // Preserve the last successfully rendered pane.
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -115,7 +149,7 @@ public final class PanelBridge {
                 return Integer.compare(ra.dex, rb.dex);
             }
 
-            // Preserve MT's already-selected NAME/TIME/SIZE/TYPE ordering for peers.
+            // TimSort is stable: peers keep MT's primary NAME/TIME/SIZE/TYPE order.
             return 0;
         }
     };
@@ -170,7 +204,7 @@ public final class PanelBridge {
         if (!n.startsWith("classes") || !n.endsWith(".dex")) return Integer.MAX_VALUE;
 
         String mid = n.substring(7, n.length() - 4);
-        if (mid.isEmpty()) return 1;
+        if (mid.length() == 0) return 1;
 
         try {
             int v = Integer.parseInt(mid);
